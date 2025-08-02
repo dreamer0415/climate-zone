@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>全球氣候帶視覺化</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans TC', sans-serif;
+        }
+        /* 自訂漸變背景 */
+        .gradient-bg {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        }
+        /* 卡片懸停效果 */
+        .climate-band {
+            transition: all 0.3s ease;
+        }
+        .climate-band:hover, .climate-band.selected {
+            transform: scale(1.03); /* 調整縮放效果以適應較窄的側邊欄 */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            z-index: 10;
+        }
+        .climate-band.selected {
+             border-width: 3px;
+        }
+        /* 讓圖片容器保持固定比例 */
+        .aspect-video {
+            aspect-ratio: 16 / 9;
+        }
+        /* 簡易的載入動畫 */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid #3498db;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen flex items-center justify-center p-4">
+    <!-- 主要容器：改為永久 flex-row 並移除固定長寬比 -->
+    <div class="w-full max-w-7xl bg-white/80 backdrop-blur-sm rounded-2xl shadow-2xl p-4 sm:p-6 md:p-8 flex flex-row gap-6">
+
+        <!-- 左側：氣候帶選擇區 (側邊欄) -->
+        <div class="w-2/5 md:w-1/3 lg:w-1/4 flex flex-col">
+            <h2 class="text-xl font-bold text-gray-800 mb-4 text-center">氣候帶選擇</h2>
+            <!-- 氣候帶列表：改為永久單欄顯示 -->
+            <div id="climate-zones-container" class="grid grid-cols-1 gap-3 overflow-y-auto pr-2">
+                <!-- 氣候帶選項將由 JS 動態生成 -->
+            </div>
+        </div>
+
+        <!-- 右側：資訊顯示區 -->
+        <div class="w-3/5 md:w-2/3 lg:w-3/4 flex flex-col bg-gray-50/50 rounded-lg p-4">
+            <!-- 模式切換 -->
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-2">
+                 <h1 class="text-xl md:text-2xl font-bold text-gray-900">氣候資訊儀表板</h1>
+                <div class="flex items-center bg-gray-200 rounded-full p-1 flex-shrink-0">
+                    <button id="single-mode-btn" class="px-3 py-1 text-sm font-semibold rounded-full bg-white shadow text-blue-600">單一檢視</button>
+                    <button id="compare-mode-btn" class="px-3 py-1 text-sm font-semibold rounded-full text-gray-600">比較模式</button>
+                </div>
+            </div>
+
+            <!-- 資訊顯示面板 -->
+            <div id="info-panel" class="flex-grow grid grid-cols-1 xl:grid-cols-2 gap-6">
+                <!-- 預設提示訊息 -->
+                 <div id="welcome-message" class="col-span-1 xl:col-span-2 flex flex-col items-center justify-center text-center h-full">
+                    <svg class="w-16 h-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2h1a2 2 0 002-2v-1a2 2 0 012-2h1.945M7.707 4.5l.053.053a.5.5 0 010 .707l-.053.053L6.414 6.5l1.293 1.293a.5.5 0 010 .707l-.053.053L6.414 7.207l1.293 1.293a.5.5 0 010 .707l-1.293 1.293a.5.5 0 01-.707 0L5 9.207l-1.293 1.293a.5.5 0 01-.707-.707L4.293 8.5 3 7.207a.5.5 0 010-.707L4.293 5.207 3 3.914a.5.5 0 01.707-.707L5 4.5zM15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    <h3 class="text-xl font-semibold text-gray-700">請從左側選擇一個氣候帶</h3>
+                    <p class="text-gray-500 mt-1">或切換至「比較模式」以對比兩種氣候。</p>
+                </div>
+                <!-- 氣候資訊卡片將由 JS 動態生成 -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const climateData = {
+            tropical_rainforest: {
+                name: '熱帶雨林氣候',
+                color: 'border-emerald-500',
+                bgColor: 'bg-emerald-50',
+                latitude: '約 0° - 10°',
+                temp: { min: 24, max: 28, avg: 26 },
+                water: { min: 2000, max: 4000, avg: 2500 },
+                description: '全年高溫多雨，季節變化不明顯。是地球上生物多樣性最豐富的地區。',
+                prompt: 'Photorealistic image of a dense, humid tropical rainforest. Towering trees with large leaves create a thick canopy, shafts of sunlight pierce through. The ground is covered in ferns and moss. A gentle stream flows through the scene. Vibrant, lush, and teeming with life.'
+            },
+            savanna: {
+                name: '熱帶莽原氣候',
+                color: 'border-amber-500',
+                bgColor: 'bg-amber-50',
+                latitude: '約 10° - 20°',
+                temp: { min: 20, max: 30, avg: 25 },
+                water: { min: 750, max: 1500, avg: 1000 },
+                description: '全年高溫，有明顯的乾濕兩季。景觀為廣闊的草原，散佈著耐旱的樹木。',
+                prompt: 'Expansive African savanna landscape during the wet season. Wide grasslands dotted with acacia trees. A herd of zebras is grazing in the distance under a vast, partly cloudy sky. Golden hour lighting.'
+            },
+            desert: {
+                name: '熱帶沙漠氣候',
+                color: 'border-yellow-400',
+                bgColor: 'bg-yellow-50',
+                latitude: '約 20° - 30°',
+                temp: { min: 15, max: 40, avg: 28 },
+                water: { min: 0, max: 250, avg: 100 },
+                description: '極度乾旱，降水稀少。氣溫日夜溫差極大。植被稀疏，以仙人掌等耐旱植物為主。',
+                prompt: 'Vast, majestic desert landscape with rolling sand dunes under a clear, deep blue sky. The sun is harsh and bright. A few hardy desert plants cling to life. Sense of immense space and solitude. Photorealistic.'
+            },
+            mediterranean: {
+                name: '地中海型氣候',
+                color: 'border-lime-600',
+                bgColor: 'bg-lime-50',
+                latitude: '約 30° - 40°',
+                temp: { min: 10, max: 25, avg: 18 },
+                water: { min: 400, max: 900, avg: 650 },
+                description: '夏季炎熱乾燥，冬季溫和多雨。適合橄欖、葡萄等作物生長。',
+                prompt: 'A scenic view of the Mediterranean coast. Rolling hills covered with olive groves and vineyards leading down to a sparkling turquoise sea. White-washed village houses with terracotta roofs are visible. Bright, sunny day.'
+            },
+            humid_subtropical: {
+                name: '副熱帶濕潤氣候',
+                color: 'border-cyan-500',
+                bgColor: 'bg-cyan-50',
+                latitude: '約 25° - 35°',
+                temp: { min: 15, max: 27, avg: 21 },
+                water: { min: 800, max: 1600, avg: 1200 },
+                description: '夏季高溫多雨，冬季溫和少雨。四季分明，適合農業發展。',
+                prompt: 'Lush, green landscape in a humid subtropical region like southeastern China or the southeastern USA. A mix of deciduous trees and bamboo groves. A gentle river flows by. The air feels warm and moist. Summer afternoon.'
+            },
+            marine_west_coast: {
+                name: '溫帶海洋性氣候',
+                color: 'border-teal-500',
+                bgColor: 'bg-teal-50',
+                latitude: '約 40° - 60°',
+                temp: { min: 5, max: 18, avg: 12 },
+                water: { min: 700, max: 2000, avg: 1100 },
+                description: '冬暖夏涼，年溫差小，全年有雨，濕潤多霧。適合溫帶闊葉林生長。',
+                prompt: 'A dramatic coastline in a marine west coast climate, like Ireland or the Pacific Northwest. Green, rolling hills meet rugged cliffs. The sea is a deep green-blue, and a light mist hangs in the air. Overcast but bright sky.'
+            },
+            humid_continental: {
+                name: '溫帶大陸性氣候',
+                color: 'border-sky-500',
+                bgColor: 'bg-sky-50',
+                latitude: '約 40° - 60°',
+                temp: { min: -5, max: 22, avg: 9 },
+                water: { min: 500, max: 1200, avg: 800 },
+                description: '冬季寒冷，夏季溫暖，四季分明，溫差大。景觀多樣，有森林和草原。',
+                prompt: 'A vibrant autumn scene in a humid continental climate. A forest of maple and oak trees with brilliant red, orange, and yellow leaves. A clear, crisp blue sky. A calm lake reflects the colorful foliage. Cool, sunny day.'
+            },
+            taiga: {
+                name: '寒帶針葉林氣候',
+                color: 'border-blue-600',
+                bgColor: 'bg-blue-50',
+                latitude: '約 50° - 70°',
+                temp: { min: -15, max: 15, avg: 0 },
+                water: { min: 300, max: 700, avg: 500 },
+                description: '冬季漫長嚴寒，夏季短暫涼爽。廣布的針葉樹（如松、杉）是主要景觀。',
+                prompt: 'A vast boreal forest (taiga) in winter. The landscape is covered in a thick blanket of snow. Tall, snow-laden coniferous trees (pines, spruces) stretch towards the horizon. The air is cold and still. A frozen river winds through the forest.'
+            },
+            tundra: {
+                name: '苔原氣候',
+                color: 'border-indigo-400',
+                bgColor: 'bg-indigo-50',
+                latitude: '約 60° - 75°',
+                temp: { min: -25, max: 10, avg: -5 },
+                water: { min: 150, max: 350, avg: 250 },
+                description: '全年寒冷，僅有短暫的暖季。樹木無法生長，地表多為苔蘚、地衣等低矮植物。',
+                prompt: 'An arctic tundra landscape in the brief summer. The ground is a carpet of low-lying mosses, lichens, and small wildflowers. No trees are visible. Low, rolling hills in the distance. The sun hangs low in the sky, casting long shadows.'
+            },
+            ice_cap: {
+                name: '冰原氣候',
+                color: 'border-slate-400',
+                bgColor: 'bg-slate-100',
+                latitude: '約 65° - 90°',
+                temp: { min: -50, max: 0, avg: -30 },
+                water: { min: 0, max: 200, avg: 100 },
+                description: '地球上最嚴寒的氣候，地表終年被厚實的冰雪覆蓋。幾乎沒有生命跡象。',
+                prompt: 'A vast, unending ice cap landscape in Antarctica or Greenland. The terrain is a flat expanse of white snow and blue ice, stretching to the horizon. The sky is a pale, cold blue. Extreme cold and isolation. A few icebergs are visible.'
+            },
+        };
+
+        const zonesContainer = document.getElementById('climate-zones-container');
+        const infoPanel = document.getElementById('info-panel');
+        const welcomeMessage = document.getElementById('welcome-message');
+        const singleModeBtn = document.getElementById('single-mode-btn');
+        const compareModeBtn = document.getElementById('compare-mode-btn');
+
+        let mode = 'single'; // 'single' or 'compare'
+        let selectedZones = [];
+
+        // 初始化
+        function init() {
+            renderZoneSelectors();
+            setupEventListeners();
+        }
+
+        // 渲染左側的氣候帶選擇按鈕
+        function renderZoneSelectors() {
+            zonesContainer.innerHTML = '';
+            for (const key in climateData) {
+                const zone = climateData[key];
+                const button = document.createElement('button');
+                button.className = `climate-band w-full p-3 rounded-lg border-2 text-left ${zone.color} ${zone.bgColor} font-semibold text-gray-700 relative`;
+                button.dataset.id = key;
+                button.innerHTML = `
+                    ${zone.name}
+                    <span class="block text-xs font-normal text-gray-500">${zone.latitude}</span>
+                `;
+                zonesContainer.appendChild(button);
+            }
+        }
+
+        // 設定事件監聽器
+        function setupEventListeners() {
+            // 模式切換
+            singleModeBtn.addEventListener('click', () => switchMode('single'));
+            compareModeBtn.addEventListener('click', () => switchMode('compare'));
+
+            // 氣候帶點擊
+            zonesContainer.addEventListener('click', (e) => {
+                const band = e.target.closest('.climate-band');
+                if (band) {
+                    handleZoneSelection(band.dataset.id);
+                }
+            });
+            
+            // AI圖片生成按鈕 (事件代理)
+            infoPanel.addEventListener('click', (e) => {
+                if (e.target.matches('.generate-image-btn')) {
+                    const id = e.target.dataset.id;
+                    generateImage(id);
+                }
+            });
+        }
+
+        // 切換模式
+        function switchMode(newMode) {
+            mode = newMode;
+            selectedZones = []; // 切換模式時清空選擇
+            if (mode === 'single') {
+                singleModeBtn.classList.add('bg-white', 'shadow', 'text-blue-600');
+                compareModeBtn.classList.remove('bg-white', 'shadow', 'text-blue-600');
+                infoPanel.classList.remove('xl:grid-cols-2');
+                infoPanel.classList.add('grid-cols-1');
+            } else {
+                compareModeBtn.classList.add('bg-white', 'shadow', 'text-blue-600');
+                singleModeBtn.classList.remove('bg-white', 'shadow', 'text-blue-600');
+                infoPanel.classList.add('xl:grid-cols-2');
+                infoPanel.classList.remove('grid-cols-1');
+            }
+            updateDisplay();
+            updateSelectorStyles();
+        }
+
+        // 處理氣候帶選擇
+        function handleZoneSelection(id) {
+            if (mode === 'single') {
+                selectedZones = [id];
+            } else { // compare mode
+                const index = selectedZones.indexOf(id);
+                if (index > -1) {
+                    selectedZones.splice(index, 1); // 如果已選則取消
+                } else {
+                    if (selectedZones.length < 2) {
+                        selectedZones.push(id);
+                    } else {
+                        // 如果已選滿2個，則替換第一個
+                        selectedZones.shift();
+                        selectedZones.push(id);
+                    }
+                }
+            }
+            updateDisplay();
+            updateSelectorStyles();
+        }
+        
+        // 更新左側選擇器的樣式
+        function updateSelectorStyles() {
+            const allBands = document.querySelectorAll('.climate-band');
+            allBands.forEach(band => {
+                if (selectedZones.includes(band.dataset.id)) {
+                    band.classList.add('selected');
+                } else {
+                    band.classList.remove('selected');
+                }
+            });
+        }
+
+        // 更新右側資訊面板
+        function updateDisplay() {
+            infoPanel.innerHTML = '';
+            if (selectedZones.length === 0) {
+                infoPanel.appendChild(welcomeMessage);
+                return;
+            }
+
+            selectedZones.forEach(id => {
+                const card = createInfoCard(id);
+                infoPanel.appendChild(card);
+            });
+            
+            if (mode === 'compare' && selectedZones.length === 1) {
+                const placeholder = document.createElement('div');
+                placeholder.className = 'flex flex-col items-center justify-center text-center h-full border-2 border-dashed rounded-lg p-4';
+                placeholder.innerHTML = `
+                    <svg class="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                    <h3 class="text-lg font-semibold text-gray-600">請選擇第二個氣候帶進行比較</h3>
+                `;
+                infoPanel.appendChild(placeholder);
+            }
+        }
+
+        // 建立單個氣候資訊卡片
+        function createInfoCard(id) {
+            const zone = climateData[id];
+            const card = document.createElement('div');
+            // 在比較模式下，確保卡片不會在單欄時變得過大
+            let cardClass = `flex flex-col gap-4 p-4 rounded-lg border-2 ${zone.color} ${zone.bgColor}`;
+            if (mode === 'single') {
+                cardClass += ' max-w-md mx-auto w-full'; // 在單一模式下限制最大寬度並居中
+            }
+            card.className = cardClass;
+            
+            card.innerHTML = `
+                <div>
+                    <h3 class="text-2xl font-bold ${zone.color.replace('border', 'text')}">${zone.name}</h3>
+                    <p class="text-sm text-gray-600">${zone.latitude}</p>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 text-center">
+                    <div class="bg-white/70 p-3 rounded-lg">
+                        <p class="text-sm text-gray-500">年均溫</p>
+                        <p class="text-2xl font-bold text-red-600">${zone.temp.avg}°C</p>
+                        <p class="text-xs text-gray-500">${zone.temp.min}°C ~ ${zone.temp.max}°C</p>
+                    </div>
+                    <div class="bg-white/70 p-3 rounded-lg">
+                        <p class="text-sm text-gray-500">年降水量</p>
+                        <p class="text-2xl font-bold text-blue-600">${zone.water.avg.toLocaleString()}</p>
+                        <p class="text-xs text-gray-500">mm</p>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="font-semibold text-gray-800 mb-1">地景特徵</h4>
+                    <p class="text-sm text-gray-700">${zone.description}</p>
+                </div>
+
+                <div class="mt-auto pt-4">
+                    <div id="image-container-${id}" class="aspect-video bg-gray-200 rounded-lg mb-3 flex items-center justify-center overflow-hidden">
+                        <p class="text-gray-500 text-sm px-2 text-center">點擊按鈕生成 AI 地景</p>
+                    </div>
+                    <button data-id="${id}" class="generate-image-btn w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">
+                        模擬生成地景
+                    </button>
+                </div>
+            `;
+            return card;
+        }
+
+        // AI 圖片生成函數
+        async function generateImage(id) {
+            const zone = climateData[id];
+            const imageContainer = document.getElementById(`image-container-${id}`);
+            const button = document.querySelector(`.generate-image-btn[data-id="${id}"]`);
+
+            // 顯示載入中
+            imageContainer.innerHTML = '<div class="loader"></div>';
+            button.disabled = true;
+            button.textContent = '生成中...';
+
+            try {
+                const payload = { 
+                    instances: [{ prompt: zone.prompt }],
+                    parameters: { "sampleCount": 1 } 
+                };
+                const apiKey = ""; // API Key 會在環境中自動提供
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`;
+                
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    // 檢查特定的錯誤狀態碼
+                    if (response.status === 401) {
+                        throw new Error('API 請求未經授權 (401)。請檢查您的 API 金鑰是否有效或已設定。');
+                    }
+                    throw new Error(`API 請求失敗，狀態碼: ${response.status}`);
+                }
+
+                const result = await response.json();
+                
+                if (result.predictions && result.predictions.length > 0 && result.predictions[0].bytesBase64Encoded) {
+                    const imageUrl = `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
+                    imageContainer.innerHTML = `<img src="${imageUrl}" alt="${zone.name} 的 AI 生成地景" class="w-full h-full object-cover">`;
+                } else {
+                    throw new Error('API 回應中未找到圖片資料');
+                }
+
+            } catch (error) {
+                console.error('圖片生成錯誤:', error);
+                // 在UI上顯示更詳細的錯誤訊息
+                imageContainer.innerHTML = `<p class="text-red-500 text-sm p-2 text-center">${error.message}</p>`;
+            } finally {
+                // 恢復按鈕狀態
+                button.disabled = false;
+                button.textContent = '重新生成地景';
+            }
+        }
+
+        // 啟動應用
+        init();
+        // 初始化時，根據預設模式調整網格
+        switchMode('single');
+    </script>
+</body>
+</html>
